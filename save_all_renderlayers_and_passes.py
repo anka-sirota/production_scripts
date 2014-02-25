@@ -43,7 +43,9 @@ bl_info = {
     "description": "Save all render layers and passes to files in respectively named folders."
 }
 
-import bpy, re
+import bpy
+import re
+import os
 
 class save_images(bpy.types.Panel):
     bl_idname      = "SaveImages"
@@ -98,14 +100,12 @@ class create_nodes( bpy.types.Operator ):
 
     def get_layers_and_passes( self, context, basename ):
         rl = context.scene.render.layers
-        use_folders = context.scene.folder_props.create_folders
         
         layers = {}
 
         pass_attr_str = 'use_pass_'
         
         for l in rl:
-            imagebase = basename + "_" + l.name
             layers[l.name] = []
 
             # List all the attributes of the render layer pass with dir
@@ -116,17 +116,8 @@ class create_nodes( bpy.types.Operator ):
                 # If render pass is active (True) - create output
                 if getattr( l, p ):
                     pass_name = p[len(pass_attr_str):]
-
-                    if use_folders:
-                        # Distribute into subfolders for each layer and pass
-                        # Example: Scene/RenderLayer/ambient_occlusion/...
-                        file_path = context.scene.name + "/" + l.name + "/" + \
-                                    pass_name + "/" + l.name + "_" + pass_name
-                    else:
-                        file_path = imagebase + "_" + pass_name
-
                     pass_info = {
-                        'filename' : file_path,
+                        'filename' : l.name,
                         'output'   : pass_name
                     }
 
@@ -173,16 +164,21 @@ class create_nodes( bpy.types.Operator ):
             to create a node per render pass """
 
         output_node = tree.nodes.new( type = self.node_types['new']['OF'] )
+        use_folders = context.scene.folder_props.create_folders
 
         # Set base path, location, label and name
-        output_node.base_path = context.scene.render.filepath
+        if (use_folders):
+            output_node.base_path = os.path.join(context.scene.render.filepath, context.scene.name, layer[0]['filename'])
+        else:
+            output_node.base_path = context.scene.render.filepath
         output_node.location  = 500, 200
         output_node.label     = 'file output'
         output_node.name      = 'file output'
         
         for rpass in layer:
             output = self.get_output( rpass['output'] )
-            
+            output_node.file_slots[0].path = rpass['filename']
+
             if output == 'Image' and not output_node.inputs[ output ].links:
                 links.new( node.outputs[ output ], output_node.inputs[ output ])
             elif output:
@@ -316,7 +312,6 @@ class create_nodes( bpy.types.Operator ):
         
         # Link composite node with the last render layer created
         links.new( node.outputs[ 'Image' ], cnode.inputs[0] )
-        
         return {'FINISHED'}
 
 class folder_options( bpy.types.PropertyGroup ):
